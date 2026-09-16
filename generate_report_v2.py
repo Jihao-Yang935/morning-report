@@ -524,20 +524,18 @@ def main():
     if sentiment_chart:
         full_report = "\n\n" + sentiment_chart + "\n\n" + full_report
 
-    # 7. 分层推送：先推速览，再推完整
+    # 7. 合并推送：速览+完整晨报合并为一条
     today_str = get_beijing_time().strftime("%Y-%m-%d")
     
-    # 推送30秒速览
-    title1 = f"⚡晨报速览 {today_str}"
-    success1 = push_to_wechat(title1, quick_summary)
+    # 合并内容：速览在前，完整晨报在后
+    merged_content = quick_summary + "\n\n" + "=" * 50 + "\n\n" + full_report
     
-    # 推送完整晨报
-    time.sleep(2)  # 间隔2秒，避免推送过快
-    title2 = f"📊完整晨报 {today_str}"
-    success2 = push_to_wechat(title2, full_report)
+    # 推送合并后的晨报
+    title = f"📊 每日产业情报晨报 {today_str}"
+    success = push_to_wechat(title, merged_content)
     
-    if not success1 and not success2:
-        print("推送全部失败，但晨报已生成")
+    if not success:
+        print("推送失败，但晨报已生成")
         print("\n" + "=" * 60)
         print("晨报内容:")
         print(report_content[:2000])
@@ -549,8 +547,7 @@ def main():
     print("\n✅ 任务完成!")
     print(f"   - 使用模型: {model_used}")
     print(f"   - 金融数据: {'已获取' if finance_data else '未获取'}")
-    print(f"   - 速览推送: {'成功' if success1 else '失败'}")
-    print(f"   - 完整推送: {'成功' if success2 else '失败'}")
+    print(f"   - 合并推送: {'成功' if success else '失败'}")
 
 
 if __name__ == "__main__":
