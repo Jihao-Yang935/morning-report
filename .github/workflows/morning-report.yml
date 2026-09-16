@@ -1,17 +1,14 @@
-name: 每日产业情报晨报
+name: 每日产业情报晨报 V2
 
-# 触发条件：
-# 1. 每周一到周五 北京时间 8:30（UTC 0:30）自动运行
-# 2. 支持手动触发（workflow_dispatch）
 on:
   schedule:
-    - cron: '30 0 * * 1-5'  # UTC 0:30 = 北京时间 8:30，周一到周五
-  workflow_dispatch:  # 手动触发
+    - cron: '30 0 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   generate-report:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # 最多运行15分钟
+    timeout-minutes: 15
 
     steps:
       - name: 检出代码
@@ -27,14 +24,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: 生成晨报并推送到微信
+      - name: 生成晨报并推送到微信（V2升级版）
         env:
           COZE_PAT: ${{ secrets.COZE_PAT }}
           COZE_BOT_ID: ${{ secrets.COZE_BOT_ID }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-        run: python generate_report.py
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+        run: python generate_report_v2.py
 
-      - name: 上传运行日志（可选，用于排查问题）
+      - name: 上传运行日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
