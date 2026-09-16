@@ -345,19 +345,265 @@ def get_dragon_tiger_list():
     
     return result
 
+
+def get_northbound_flow():
+    """获取北向资金数据：净流入/流出 + 买卖TOP5个股"""
+    print(f"[{get_beijing_time().strftime('%H:%M:%S')}] 获取北向资金数据...")
+    
+    result = {
+        "net_inflow": 0,
+        "sh_net_inflow": 0,
+        "sz_net_inflow": 0,
+        "top_buy": [],
+        "top_sell": []
+    }
+    
+    # 东方财富北向资金实时API
+    try:
+        url = "https://push2.eastmoney.com/api/qt/kamt.rtmin/get"
+        params = {
+            "fields1": "f1,f2,f3,f4",
+            "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63",
+            "ut": "b2884a393a59ad64002292a3e90d46a"
+        }
+        data = safe_request(url, params=params, timeout=10)
+        
+        if data and "data" in data and data["data"]:
+            d = data["data"]
+            
+            def parse_north_value(val):
+                """解析北向资金数值，可能是数组或逗号分隔字符串"""
+                if val is None:
+                    return 0
+                if isinstance(val, (int, float)):
+                    return val
+                if isinstance(val, list) and len(val) > 0:
+                    # 取最后一个非零值
+                    for v in reversed(val):
+                        if v and v != 0:
+                            return v
+                    return val[-1] if val else 0
+                if isinstance(val, str):
+                    # 格式可能是 "时间,数值,..." 或纯数字
+                    parts = val.split(",")
+                    if len(parts) >= 2:
+                        try:
+                            return float(parts[1])
+                        except:
+                            return 0
+                    try:
+                        return float(val)
+                    except:
+                        return 0
+                return 0
+            
+            result["net_inflow"] = parse_north_value(d.get("s2n"))
+            result["sh_net_inflow"] = parse_north_value(d.get("s2n_sh"))
+            result["sz_net_inflow"] = parse_north_value(d.get("s2n_sz"))
+    except Exception as e:
+        print(f"获取北向资金实时数据失败: {e}")
+    
+    # 北向资金买卖TOP10个股（东方财富数据中心）
+    try:
+        url2 = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        params2 = {
+            "sortColumns": "HOLD_MARKET_CAP",
+            "sortTypes": "-1",
+            "pageSize": "10",
+            "pageNumber": "1",
+            "reportName": "RPT_MUTUAL_HOLD_DET",
+            "columns": "ALL",
+            "filter": f"(TRADE_DATE='{get_beijing_time().strftime('%Y-%m-%d')}')"
+        }
+        data2 = safe_request(url2, params=params2, timeout=10)
+        
+        if data2 and "result" in data2 and data2["result"] and "data" in data2["result"]:
+            stocks = data2["result"]["data"]
+            for stock in stocks[:5]:
+                result["top_buy"].append({
+                    "name": stock.get("SECURITY_NAME_ABBR", ""),
+                    "code": stock.get("SECURITY_CODE", ""),
+                    "hold_cap": stock.get("HOLD_MARKET_CAP", 0),
+                    "change_pct": stock.get("CHANGE_RATE", 0)
+                })
+    except Exception as e:
+        print(f"获取北向资金个股数据失败: {e}")
+    
+    return result
+
+
+def get_margin_trading():
+    """获取融资融券数据：融资余额变化 + 融资净买入TOP5行业"""
+    print(f"[{get_beijing_time().strftime('%H:%M:%S')}] 获取融资融券数据...")
+    
+    result = {
+        "total_balance": 0,
+        "balance_change": 0,
+        "balance_change_pct": 0,
+        "top_industries": [],
+        "top_stocks": []
+    }
+    
+    # 东方财富融资融券API
+    try:
+        url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        params = {
+            "sortColumns": "DATE",
+            "sortTypes": "-1",
+            "pageSize": "2",
+            "pageNumber": "1",
+            "reportName": "RPTA_WEB_RZRQ_LSHJ",
+            "columns": "ALL"
+        }
+        data = safe_request(url, params=params, timeout=10)
+        
+        if data and "result" in data and data["result"] and "data" in data["result"]:
+            records = data["result"]["data"]
+            if len(records) >= 1:
+                result["total_balance"] = records[0].get("RZYE", 0)
+            if len(records) >= 2:
+                prev_balance = records[1].get("RZYE", 0)
+                result["balance_change"] = result["total_balance"] - prev_balance
+                if prev_balance > 0:
+                    result["balance_change_pct"] = round(result["balance_change"] / prev_balance * 100, 2)
+    except Exception as e:
+        print(f"获取融资融券总量数据失败: {e}")
+    
+    # 融资净买入TOP个股
+    try:
+        url2 = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        params2 = {
+            "sortColumns": "RZMRE",
+            "sortTypes": "-1",
+            "pageSize": "5",
+            "pageNumber": "1",
+            "reportName": "RPTA_WEB_RZRQ_GGMX",
+            "columns": "ALL",
+            "filter": f"(DATE='{get_beijing_time().strftime('%Y-%m-%d')}')"
+        }
+        data2 = safe_request(url2, params=params2, timeout=10)
+        
+        if data2 and "result" in data2 and data2["result"] and "data" in data2["result"]:
+            stocks = data2["result"]["data"]
+            for stock in stocks:
+                result["top_stocks"].append({
+                    "name": stock.get("SECURITY_NAME_ABBR", ""),
+                    "code": stock.get("SECURITY_CODE", ""),
+                    "net_buy": stock.get("RZMRE", 0),
+                    "change_pct": stock.get("CHANGE_RATE", 0)
+                })
+    except Exception as e:
+        print(f"获取融资买入个股数据失败: {e}")
+    
+    return result
+
+
+def get_leader_stocks_detail(limit_up_data):
+    """获取龙头股详细跟踪信息：最高板+次高板的涨停原因、封单、封板时间"""
+    print(f"[{get_beijing_time().strftime('%H:%M:%S')}] 获取龙头股详细信息...")
+    
+    result = {
+        "top_leader": None,
+        "second_leader": None,
+        "all_leaders": []
+    }
+    
+    if not limit_up_data or "consecutive_structure" not in limit_up_data:
+        return result
+    
+    structure = limit_up_data["consecutive_structure"]
+    
+    # 从涨停板API获取详细信息
+    url = "https://push2ex.eastmoney.com/getTopicZTPool"
+    params = {
+        "ut": "7eea3edcaed734bea9cbfc24409ed989",
+        "dpt": "wz.ztzt",
+        "Pageindex": "0",
+        "pagesize": "200",
+        "sort": "fbt:asc",
+        "date": get_beijing_time().strftime("%Y%m%d")
+    }
+    
+    data = safe_request(url, params=params, timeout=10)
+    
+    def format_time_str(time_int):
+        """将整数时间格式化为HH:MM:SS"""
+        if not time_int:
+            return ""
+        try:
+            t = int(time_int)
+            h = t // 10000
+            m = (t % 10000) // 100
+            s = t % 100
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        except:
+            return str(time_int)
+    
+    stock_details = {}
+    if data and "data" in data and "pool" in data["data"]:
+        for stock in data["data"]["pool"]:
+            name = stock.get("n", "")
+            stock_details[name] = {
+                "name": name,
+                "code": stock.get("c", ""),
+                "consecutive_boards": stock.get("lbc", 0),
+                "first_limit_time": format_time_str(stock.get("fbt", "")),
+                "last_limit_time": format_time_str(stock.get("lbt", "")),
+                "limit_amount": stock.get("zbc", 0),
+                "seal_amount": stock.get("fund", 0),
+                "turnover_rate": stock.get("hs", 0),
+                "amount": stock.get("amount", 0),
+                "reason": stock.get("hybk", "") or stock.get("zttj", "")
+            }
+    
+    # 提取最高板和次高板龙头
+    sorted_boards = sorted(structure.keys(), key=lambda x: int(x), reverse=True)
+    
+    if len(sorted_boards) >= 1:
+        top_board = sorted_boards[0]
+        top_stocks = structure[top_board]
+        if top_stocks:
+            top_name = top_stocks[0]
+            result["top_leader"] = stock_details.get(top_name, {"name": top_name, "consecutive_boards": int(top_board)})
+            result["all_leaders"].append(result["top_leader"])
+    
+    if len(sorted_boards) >= 2:
+        second_board = sorted_boards[1]
+        second_stocks = structure[second_board]
+        if second_stocks:
+            second_name = second_stocks[0]
+            result["second_leader"] = stock_details.get(second_name, {"name": second_name, "consecutive_boards": int(second_board)})
+            result["all_leaders"].append(result["second_leader"])
+    
+    # 再提取3板以上的所有龙头
+    for board in sorted_boards:
+        if int(board) >= 3:
+            for stock_name in structure[board]:
+                if stock_name not in [l.get("name") for l in result["all_leaders"]]:
+                    detail = stock_details.get(stock_name, {"name": stock_name, "consecutive_boards": int(board)})
+                    result["all_leaders"].append(detail)
+    
+    return result
+
 def get_all_finance_data():
     """获取所有金融数据，汇总返回"""
     print("=" * 60)
     print("开始获取实时金融数据...")
     print("=" * 60)
     
+    # 先获取涨跌停数据（龙头股跟踪需要）
+    limit_up_down = get_limit_up_down_data()
+    
     result = {
         "fetch_time": get_beijing_time().strftime("%Y-%m-%d %H:%M:%S"),
         "a_share": get_a_share_market_overview(),
-        "limit_up_down": get_limit_up_down_data(),
+        "limit_up_down": limit_up_down,
         "us_sectors": get_us_stock_sectors(),
         "global_assets": get_global_assets(),
-        "dragon_tiger": get_dragon_tiger_list()
+        "dragon_tiger": get_dragon_tiger_list(),
+        "northbound": get_northbound_flow(),
+        "margin_trading": get_margin_trading(),
+        "leader_stocks": get_leader_stocks_detail(limit_up_down)
     }
     
     print("=" * 60)
@@ -422,6 +668,62 @@ def format_finance_data_for_prompt(data):
         for stock in data["dragon_tiger"]["net_buy_top"]:
             net_buy_yi = round(stock["net_buy"] / 100000000, 2) if stock["net_buy"] else 0
             lines.append(f"  {stock['name']}({stock['code']}): 净买入{net_buy_yi}亿, 涨跌幅{stock['change_pct']}%")
+        lines.append("")
+    
+    # 北向资金
+    if "northbound" in data and data["northbound"]:
+        nb = data["northbound"]
+        lines.append("六、北向资金:")
+        
+        def safe_to_yi(val):
+            """安全转换为亿元"""
+            if val is None:
+                return 0
+            if isinstance(val, (int, float)):
+                return round(val / 100000000, 2)
+            return 0
+        
+        net_inflow_yi = safe_to_yi(nb.get("net_inflow", 0))
+        arrow = "↑" if net_inflow_yi > 0 else "↓" if net_inflow_yi < 0 else "→"
+        lines.append(f"  北向资金净流入: {arrow}{abs(net_inflow_yi)}亿")
+        sh_yi = safe_to_yi(nb.get("sh_net_inflow", 0))
+        sz_yi = safe_to_yi(nb.get("sz_net_inflow", 0))
+        lines.append(f"  沪股通: {sh_yi}亿, 深股通: {sz_yi}亿")
+        if nb.get("top_buy"):
+            lines.append("  北向持股市值TOP5:")
+            for stock in nb["top_buy"][:5]:
+                hold_yi = safe_to_yi(stock.get("hold_cap", 0))
+                lines.append(f"    {stock['name']}({stock['code']}): 持股市值{hold_yi}亿")
+        lines.append("")
+    
+    # 融资融券
+    if "margin_trading" in data and data["margin_trading"]:
+        mt = data["margin_trading"]
+        lines.append("七、融资融券:")
+        total_yi = round(mt.get("total_balance", 0) / 100000000, 2) if mt.get("total_balance") else 0
+        change_yi = round(mt.get("balance_change", 0) / 100000000, 2) if mt.get("balance_change") else 0
+        arrow = "↑" if change_yi > 0 else "↓" if change_yi < 0 else "→"
+        lines.append(f"  融资余额: {total_yi}亿, 较前日{arrow}{abs(change_yi)}亿({mt.get('balance_change_pct', 0)}%)")
+        if mt.get("top_stocks"):
+            lines.append("  融资净买入TOP5:")
+            for stock in mt["top_stocks"][:5]:
+                net_buy_yi = round(stock.get("net_buy", 0) / 100000000, 2) if stock.get("net_buy") else 0
+                lines.append(f"    {stock['name']}({stock['code']}): 净买入{net_buy_yi}亿, 涨跌幅{stock.get('change_pct', 0)}%")
+        lines.append("")
+    
+    # 龙头股跟踪
+    if "leader_stocks" in data and data["leader_stocks"] and data["leader_stocks"].get("all_leaders"):
+        ls = data["leader_stocks"]
+        lines.append("八、龙头股跟踪（3板以上）:")
+        for leader in ls["all_leaders"]:
+            boards = leader.get("consecutive_boards", 0)
+            name = leader.get("name", "")
+            code = leader.get("code", "")
+            first_time = leader.get("first_limit_time", "")
+            seal_amount = leader.get("seal_amount", 0)
+            seal_yi = round(seal_amount / 100000000, 2) if seal_amount else 0
+            reason = leader.get("reason", "")
+            lines.append(f"  {boards}板 {name}({code}): 首封{first_time}, 封单{seal_yi}亿, 题材:{reason}")
         lines.append("")
     
     lines.append("【请基于以上真实数据生成晨报，不要编造数据】")
