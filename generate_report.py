@@ -57,9 +57,13 @@ def call_coze_api():
     resp.raise_for_status()
     chat_data = resp.json()
 
-    conversation_id = chat_data.get("conversation_id", "")
-    chat_id = chat_data.get("id", "")
+    # Coze API v3 返回的数据在 data 字段中
+    chat_info = chat_data.get("data", chat_data)
+    conversation_id = chat_info.get("conversation_id", "")
+    chat_id = chat_info.get("id", "")
     print(f"[{get_beijing_time().strftime('%H:%M:%S')}] 对话已创建: conversation_id={conversation_id}, chat_id={chat_id}")
+    if not conversation_id or not chat_id:
+        print(f"[{get_beijing_time().strftime('%H:%M:%S')}] API返回完整数据: {chat_data}")
 
     # 2. 轮询对话状态
     max_wait = 300  # 最多等5分钟
@@ -75,7 +79,9 @@ def call_coze_api():
         retrieve_resp.raise_for_status()
         retrieve_data = retrieve_resp.json()
 
-        status = retrieve_data.get("status", "")
+        # Coze API v3 返回的数据在 data 字段中
+        retrieve_info = retrieve_data.get("data", retrieve_data)
+        status = retrieve_info.get("status", "")
         print(f"[{get_beijing_time().strftime('%H:%M:%S')}] 等待中... 状态={status}, 已等{waited}秒")
 
         if status == "completed":
